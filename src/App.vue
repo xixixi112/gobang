@@ -4,7 +4,7 @@
  * @Author: 韩震
  * @Date: 2023-04-23 22:31:21
  * @LastEditors: 韩震
- * @LastEditTime: 2023-04-24 22:17:17
+ * @LastEditTime: 2023-05-18 10:31:34
 -->
 <!--
  * @Descripttion: 
@@ -22,7 +22,7 @@
 </template>
 
 <script>
-import Home from '@/pages/Home'
+import Home from '@/pages/Home.vue'
 
 export default {
   name: 'App',
