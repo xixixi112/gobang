@@ -1,17 +1,33 @@
+<!--
+ * @Descripttion: 
+ * @version: 
+ * @Author: 韩震
+ * @Date: 2023-04-23 22:31:21
+ * @LastEditors: 韩震
+ * @LastEditTime: 2023-04-24 22:17:17
+-->
+<!--
+ * @Descripttion: 
+ * @version: 
+ * @Author: 韩震
+ * @Date: 2023-04-23 22:31:21
+ * @LastEditors: 韩震
+ * @LastEditTime: 2023-04-23 22:45:12
+-->
 <template>
   <div id="app">
-    <img alt="Vue logo" src="./assets/logo.png">
-    <HelloWorld msg="Welcome to Your Vue.js App"/>
+    <!-- <img alt="Vue logo" src="./assets/logo.png"> -->
+    <Home></Home>
   </div>
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import Home from '@/pages/Home'
 
 export default {
   name: 'App',
   components: {
-    HelloWorld
+    Home
   }
 }
 </script>
