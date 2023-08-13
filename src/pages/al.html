@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title></title>
+        <style>
+            *{
+                padding: 0;margin: 0;
+            }
+            
+            html,body{width:100%;height: 100%;}
+            /*canvas{
+                margin-top: 80px;
+                margin-left: 50px;
+            }*/
+            div{
+                text-align: center;
+            }
+            div button{
+                line-height: 50px;
+                font-size: 36px;
+            }
+            .canvas{
+                margin: 0 auto;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="canvas">
+            <canvas id="gobang"></canvas>
+        </div>
+        
+        <div>
+            <button id="regret">悔棋</button>
+        </div>
+    </body>
+    <script type="text/javascript">
+        // 五子棋
+
+class Gobang {
+    constructor(canvasId, rowCount = 16) {
+        this.canvasId = canvasId;
+        this.rowCount = rowCount;
+        this.resetData();
+    }
+
+    // 渲染页面
+    renderUi() {
+        //清除之前的画布
+        this.ctx.clearRect(0, 0, this.width, this.height);
+
+        // 重绘画布
+        this.drawChessBoard();
+        this.drawPieces();
+    }
+
+    // 重置数据，再来一局
+    resetData() {
+        var body = document.documentElement || document.body;
+        var minWidth = Math.min(body.clientWidth,body.clientHeight);
+
+        // 属性
+        this.pieces = []; // 棋子数组 二位数组[[],[]] 0——空  1——白  2——黑
+        this.colCount = this.rowCount; // 列数
+        this.cellWidth = minWidth / (this.rowCount); //每个格子的宽
+        this.width = this.rowCount * this.cellWidth; // 棋盘的宽
+        this.height = this.width; // 棋盘的高
+        this.R = this.cellWidth * 0.4; // 棋子半径
+        this.hisStatus = []; // 历史记录 history status
+        this.active = 2; // 当前走棋方
+        this.canvas = document.getElementById(this.canvasId); // canvas DOM
+        this.ctx = this.canvas.getContext("2d"); // canvas环境
+        this.victor = 0; // 胜利方
+        this.canContinue = true; // 是否可以继续下棋（产生赢家以后不可以）
+        this.myPositions = []; // 我方的推荐位置数组          格式：{x:5,y:6,weight:8}
+        this.enemyPositions = []; // 敌方的推荐位置数组
+
+        this.init();
+    }
+
+    // 初始化数据
+    init() {
+        this.initCanvas();
+        this.initPiece();
+        this.renderUi();
+    }
+    
+    // 暂时给棋盘中间加一个黑棋
+    first(){
+        var center = Math.floor((this.rowCount+1)/2);
+        this.pieces[center][center] = this.active;
+        this.hisStatus[1] = this.deepClone(this.pieces);
+        this.exchange();
+    }
+
+    // 设置棋盘的宽高
+    initCanvas() {
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+    }
+
+    // 初始化棋子
+    initPiece() {
+        var initPieces = [];
+        for(let i = 0; i <= this.rowCount; i++) { // 行
+            initPieces.push([]);
+            for(let j = 0; j <= this.colCount; j++) { // 列
+                if(i==0 || j==0 || i==this.rowCount || j==this.rowCount){
+                    initPieces[i].push(-1); // 不可以走的位置-1  空0 白1  黑2
+                }else{
+                    initPieces[i].push(0); // 空0 白1  黑2
+                }
+            }
+        }
+        this.pieces = this.deepClone(initPieces);
+        this.hisStatus[0] = this.deepClone(initPieces);
+        //this.first();
+    }
+    
+    // 获取某个棋子的颜色     0——空  1——白  2——黑
+    getColor (num){
+        var res = "";
+        switch(num){
+            case 0:
+                res = "";
+                break;
+            case -1:
+                res = "black";
+                break;
+            case 1:
+                res = "white";
+                break;
+            case -1:
+                res = "yellow";
+                break;
+            default: 
+                res="red"; // 错误了
+        }
+        return res;
+    }
+
+    // 画棋盘
+    drawChessBoard() {
+        // 背景
+        this.ctx.beginPath();
+        this.ctx.rect(0, 0, this.width, this.height);
+        this.ctx.closePath();
+        this.ctx.fillStyle = "#0099CC";
+        this.ctx.fill();
+
+        // 画横线
+        this.ctx.beginPath();
+        for(let i = 0; i < this.rowCount; i++) {
+            this.ctx.moveTo(0, this.cellWidth * i);
+            this.ctx.lineTo(this.width, this.cellWidth * i);
+        }
+        this.ctx.stroke();
+
+        // 画纵线
+        this.ctx.beginPath();
+        for(let i = 0; i < this.colCount; i++) {
+            this.ctx.moveTo( this.cellWidth * i, 0);
+            this.ctx.lineTo( this.cellWidth * i, this.height);
+        }
+        this.ctx.stroke();
+    }
+
+    // 画一个棋子
+    drawDot(x, y, r, color) {
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, r, 0, 2 * Math.PI);
+        this.ctx.closePath();
+
+        this.ctx.fillStyle = color;
+        this.ctx.fill();
+    }
+
+    // 画所有的棋子
+    drawPieces(x, y) {
+        //console.log(this.pieces)
+        for(var i = 0; i < this.pieces.length; i++) { // 边界线不让走棋
+            for(let j=0; j < this.pieces[i].length;j++){
+//                if(this.pieces[i][j] == 1 || this.pieces[i][j] == 2){
+                if(this.pieces[i][j] !== 0){
+                    var x = i * this.cellWidth;
+                    var y = j * this.cellWidth;
+//                    var y = j * this.cellWidth - this.cellWidth/2;
+                    this.drawDot(x,y,this.R,this.getColor(this.pieces[i][j]));
+                }
+            }
+        }
+    }
+    
+    // 
+    drawOnePiece(i,j){
+        var x = i * this.cellWidth;
+        var y = j * this.cellWidth;
+        this.drawDot(x,y,this.R,this.getColor(this.active));
+    }
+    
+    // 判断是否可以走这一步
+    canGo(x, y) {
+        if(this.canContinue === false){
+            alert("游戏已结束");
+            return false;
+        }
+        if(x==0 || y==0 || x==this.rowCount || y==this.rowCount){
+            alert("边界上不可以走棋哦");
+            return false;
+        }
+        if(this.pieces[x][y]==0){
+            return true;
+        }else {
+            return false;
+        }
+    }
+    
+    // 切换角色（换着走棋）
+    exchange(){
+        this.active = this.active == 1 ? -1 : 1;
+    }
+
+    // 走一步棋
+    goStep(x,y) {
+        // 判断这一步是否可以走
+        if(this.canGo(x,y)){
+            this.pieces[x][y] = this.active;//添加棋子
+            this.drawOnePiece(x,y);//把棋子画上去
+            this.hisStatus.push(this.deepClone(this.pieces));//历史记录（悔棋复盘功能使用）
+            this.getVictor();//这里有个坑，棋子还没有画上去，已经把输赢判断了？？？？
+            this.exchange();
+            if(this.active == 1 && !this.victor){ // 白棋，机器人
+                debugger
+                this.helpRecommend(this.active);
+                console.log(this.myPositions,this.enemyPositions)
+                var p = this.bestPosition();
+                console.log(p);
+                this.pieces[p.x][p.y] = this.active;
+                this.drawOnePiece(p.x,p.y);
+                this.hisStatus.push(this.deepClone(this.pieces));//历史记录（悔棋复盘功能使用）
+                this.getVictor();
+                this.exchange();
+//                this.renderUi();
+            }
+        }else {
+            // alert("这个位置已经被占领了，换个位置走吧");
+        }
+    }
+    
+    // 悔棋
+    regret() {
+        if(this.hisStatus.length<=1){
+            console.log("当前不可以悔棋了");
+            return;
+        }
+        this.hisStatus.pop();
+        this.hisStatus.pop();
+        this.pieces = this.deepClone(this.hisStatus[this.hisStatus.length-1]);
+        // this.exchange();
+        this.renderUi();
+    }
+    
+    //
+    helpRecommend(oneSide){
+        var enemySide = oneSide == 1 ? -1 : 1;
+        this.myPositions = [];
+        this.enemyPositions = [];
+        
+        for(let i=1;i<this.rowCount;i++){
+            
+            for(let j=1;j<this.rowCount;j++){
+                
+//                 var arr = ["r","rd","d","ld","l","lt","t","rt"];
+                var arr = ["r","rd","d","ld"];
+                // 权重相关变量 forward  backward   center  double  null
+                var n2f1 = 0.2, // 两头空时 前面第一个空位置的权重
+                    n2f2 = 0.1, // 两头空时 前面第二个空位置的权重
+                    n2b1 = n2f1,
+                    n2b2 = n2f2,
+                    n1f1 = -0.1, // 一头空另一头是敌方或边界时  前面第一个空位置的权重
+                    n1f2 = -0.2,
+                    n1b1 = n1f1,
+                    n1b2 = n1f2,
+                    dn2c = 0.2, // 有两个片段时   两端都是空的时   中间位置的权重
+                    dn2b1 = 0.1,// 有两个片段时   两端都是空的时   后方第一个位置的权重
+                    dn2f1 = dn2b1,
+                    dn1c = -0.1,
+                    dn1b1 = -0.1,
+                    dn1f1 = dn1b1;
+                
+                
+                
+                if(this.pieces[i][j]==oneSide){ // 我方
+                    for(var d =0;d<arr.length;d++){
+                        var count = 0;
+                        count = this.directionCount(arr[d],oneSide,i,j);
+                        var nd = this.nd(arr[d]);
+                        var h = nd.h;
+                        var v = nd.v;
+                        
+                        // 某个方向的末端的推荐权重  (权重暂时认为后方第一个位置和第二位位置一样) 两头空的+0.2  一端空的+0  两端都死的考虑能否凑5个子
+                        if(this.pieces[i-1*h] && this.pieces[i-1*h][j-1*v] === 0){ // 前1空
+                            if(this.pieces[i+count*h] && this.pieces[i+count*h][j+count*v] === 0){ // 末1空
+                                if(this.pieces[i+(count+1)*h] && this.pieces[i+(count+1)*h][j+(count+1)*v] === 0){ //末2空
+                                    this.sumWeight(this.myPositions,i+count*h,j+count*v,10**(count+n2b1));
+                                    this.sumWeight(this.myPositions,i+(count+1)*h,j+(count+1)*v,10**(count+n2b2));
+                                }else if(this.pieces[i+(count+1)*h] && this.pieces[i+(count+1)*h][j+(count+1)*v] === oneSide){ // 末2己
+                                    let count2 = this.directionCount(arr[d],oneSide,i+(count+1)*h,j+(count+1)*v);
+                                    if(this.pieces[i+(count+1+count2)*h] && this.pieces[i+(count+1+count2)*h][j+(count+1+count2)*v] === 0){
+                                        this.sumWeight(this.myPositions,i+count*h,j+count*v,10**(count+count2+dn2c));
+                                        this.sumWeight(this.myPositions,i+(count+1+count2)*h,j+(count+1+count2)*v,10**(count+count2+dn2b1));
+                                    }else {
+                                        this.sumWeight(this.myPositions,i+count*h,j+count*v,10**(count+count2+dn1c));
+                                    }
+                                }else { //末2敌或边界  
+                                    this.sumWeight(this.myPositions,i+count*h,j+count*v,10**(count+n1b1));
+                                }
+                            }else { // 末1敌或边界   末1不可能是己方的
+                                // 末端没有推荐的位置
+                            }
+                        }else if(this.pieces[i-1*h] && this.pieces[i-1*h][j-1*v] === oneSide){ // 前1己  这里已经计算过了，跳过逻辑
+                            continue;
+                        }else { // 前1 敌方或边界
+                            if(this.pieces[i+count*h] && this.pieces[i+count*h][j+count*v] === 0){ // 末1空
+                                if(this.pieces[i+(count+1)*h] && this.pieces[i+(count+1)*h][j+(count+1)*v] === 0){ //末2空
+                                    this.sumWeight(this.myPositions,i+count*h,j+count*v,10**(count+n1b1));
+                                    this.sumWeight(this.myPositions,i+(count+1)*h,j+(count+1)*v,10**(count+n1b2));
+                                }else if(this.pieces[i+(count+1)*h] && this.pieces[i+(count+1)*h][j+(count+1)*v] === oneSide){ // 末2己
+//                                    this.sumWeight(this.myPositions,i+count*h,j+count*v,10**(count+0.1));
+                                    let count2 = this.directionCount(arr[d],oneSide,i+(count+1)*h,j+(count+1)*v);
+                                    if(this.pieces[i+(count+1+count2)*h] && this.pieces[i+(count+1+count2)*h][j+(count+1+count2)*v] === 0){
+                                        this.sumWeight(this.myPositions,i+count*h,j+count*v,10**(count+count2+dn1c));
+                                        this.sumWeight(this.myPositions,i+(count+1+count2)*h,j+(count+1+count2)*v,10**(count+count2+dn1b1));
+                                    }else {// 两端是死的 中间要么是5要么就没意义
+                                        if(count+1+count2 == 5){
+                                            this.sumWeight(this.myPositions,i+count*h,j+count*v,10**(count+count2+1));
+                                        }else{
+                                            this.sumWeight(this.myPositions,i+count*h,j+count*v,0);
+                                            //console.log("中间凑不够5个，中间权重是0");
+                                        }
+                                    }
+                                }else { //末2敌或边界
+                                    if(count==4){ // 只有四颗子的时候这个位置才有意义
+                                        this.sumWeight(this.myPositions,i+count*h,j+count*v,10**(count+1));
+                                    }
+                                }
+                            }else { // 末1敌或边界   末1不可能是己方的
+                                // 走不了了
+                            }
+                        }
+                        
+                        // 某个方向的前端的推荐权重
+                        if(this.pieces[i+count*h] && this.pieces[i+count*h][j+count*v] === 0){ // 后1空
+                            if(this.pieces[i-1*h] && this.pieces[i-1*h][j-1*v] === 0){ // 前1空
+                                if(this.pieces[i-2*h] && this.pieces[i-2*h][j-2*v] === 0){ //前2空
+                                    this.sumWeight(this.myPositions,i-1*h,j-1*v,10**(count+n2f1));
+                                    this.sumWeight(this.myPositions,i-2*h,j-2*v,10**(count+n2f2));
+                                }else if(this.pieces[i-2*h] && this.pieces[i-2*h][j-2*v] === oneSide){ // 前2己
+//                                    this.sumWeight(this.myPositions,i-1*h,j-1*v,10**(count+0.3));
+                                    let count2 = this.directionCount(this.reverseDirection(arr[d]),oneSide,i-2*h,j-2*v);
+                                    if(this.pieces[i-(1+count2)*h] && this.pieces[i-(1+count2)*h][j-(1+count2)*v] === 0){
+                                        this.sumWeight(this.myPositions,i-1*h,j-1*v,10**(count+count2+dn2c));
+                                        this.sumWeight(this.myPositions,i-(1+count2)*h,j-(1+count2)*v,10**(count+count2+dn2f1));
+                                    }else {
+                                        this.sumWeight(this.myPositions,i-1*h,j-1*v,10**(count+count2+dn1c));
+                                        this.sumWeight(this.myPositions,i-(1+count2)*h,j-(1+count2)*v,10**(count+count2+dn1f1));
+                                    }
+                                }else { //前2敌或边界
+                                    this.sumWeight(this.myPositions,i-1*h,j-1*v,10**(count+n1f1));
+                                }
+                            }else { // 前1敌或边界   前1不可能是己方的
+                                // 前端没有推荐的位置
+                            }
+                        }else if(this.pieces[i+count*h] && this.pieces[i+count*h][j+count*v] === oneSide){ // 后1己  这里已经计算过了，跳过逻辑
+                            continue;
+                        }else { // 后1 敌方或边界
+                            if(this.pieces[i-1*h] && this.pieces[i-1*h][j-1*v] === 0){ // 前1空
+                                if(this.pieces[i-2*h] && this.pieces[i-2*h][j-2*v] === 0){ //前2空
+                                    this.sumWeight(this.myPositions,i-1*h,j-1*v,10**(count+n1f1));
+                                    this.sumWeight(this.myPositions,i-2*h,j-2*v,10**(count+n1f2));
+                                }else if(this.pieces[i-2*h] && this.pieces[i-2*h][j-2*v] === oneSide){ // 前2己
+                                    // this.sumWeight(this.myPositions,i-1*h,j-1*v,10**(count+0.1));
+                                    let count2 = this.directionCount(this.reverseDirection(arr[d]),oneSide,i-2*h,j-2*v);
+                                    if(this.pieces[i-(1+count2)*h] && this.pieces[i-(1+count2)*h][j-(1+count2)*v] === 0){
+                                        this.sumWeight(this.myPositions,i-1*h,j-1*v,10**(count+count2+dn1c));
+                                        this.sumWeight(this.myPositions,i-(1+count2)*h,j-(1+count2)*v,10**(count+count2+dn1f1));
+                                    }else {
+                                        if(count+1+count2 == 5){
+                                            this.sumWeight(this.myPositions,i-1*h,j-1*v,10**(count+count2+1));
+                                        }else{
+                                            this.sumWeight(this.myPositions,i-1*h,j-1*v,0);
+                                            //console.log("中间凑不够5个，中间权重是0");
+                                        }
+                                    }
+                                }else { //前2敌或边界
+                                    if(count==4){ // 只有四颗子的时候这个位置才有意义
+                                        this.sumWeight(this.myPositions,i-2*h,j-2*v,10**(count+1));
+                                    }
+                                }
+                            }else { // 前1敌或边界  前1不可能是己方的
+                                // 前后都是敌，推荐个锤子
+                            }
+                        }
+                    }
+                }else if(this.pieces[i][j]==enemySide){ // 敌方
+                    for(var d =0;d<arr.length;d++){
+                        var count = 0;
+                        count = this.directionCount(arr[d],enemySide,i,j);
+                        var nd = this.nd(arr[d]);
+                        var h = nd.h;
+                        var v = nd.v;
+                        // 某个方向的末端的推荐权重
+                        if(this.pieces[i-1*h] && this.pieces[i-1*h][j-1*v] === 0){ // 前1空
+                            if(this.pieces[i+count*h] && this.pieces[i+count*h][j+count*v] === 0){ // 末1空
+                                if(this.pieces[i+(count+1)*h] && this.pieces[i+(count+1)*h][j+(count+1)*v] === 0){ //末2空
+                                    this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+n2b1));
+                                    this.sumWeight(this.enemyPositions,i+(count+1)*h,j+(count+1)*v,10**(count+n2b2));
+                                }else if(this.pieces[i+(count+1)*h] && this.pieces[i+(count+1)*h][j+(count+1)*v] === enemySide){ // 末2己
+                                    let count2 = this.directionCount(arr[d],enemySide,i+(count+1)*h,j+(count+1)*v);
+                                    if(this.pieces[i+(count+1+count2)*h] && this.pieces[i+(count+1+count2)*h][j+(count+1+count2)*v] === 0){
+                                        this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+count2+dn2c));
+                                        this.sumWeight(this.enemyPositions,i+(count+1+count2)*h,j+(count+1+count2)*v,10**(count+count2+dn2b1));
+                                    }else {
+                                        this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+count2+dn1c));
+                                    }
+                                    // this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+0.3));
+                                }else { //末2敌或边界  
+                                    this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+n1b1));
+                                }
+                            }else { // 末1敌或边界   末1不可能是己方的
+                                // 末端没有推荐的位置
+                            }
+                        }else if(this.pieces[i-1*h] && this.pieces[i-1*h][j-1*v] === enemySide){ // 前1己  这里已经计算过了，跳过逻辑
+                            continue;
+                        }else { // 前1 敌方或边界
+                            if(this.pieces[i+count*h] && this.pieces[i+count*h][j+count*v] === 0){ // 末1空
+                                if(this.pieces[i+(count+1)*h] && this.pieces[i+(count+1)*h][j+(count+1)*v] === 0){ //末2空
+                                    this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+n1b1));
+                                    this.sumWeight(this.enemyPositions,i+(count+1)*h,j+(count+1)*v,10**(count+n1b2));
+                                }else if(this.pieces[i+(count+1)*h] && this.pieces[i+(count+1)*h][j+(count+1)*v] === enemySide){ // 末2己
+                                    //this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+0.1));
+                                    let count2 = this.directionCount(arr[d],enemySide,i+(count+1)*h,j+(count+1)*v);
+                                    if(this.pieces[i+(count+1+count2)*h] && this.pieces[i+(count+1+count2)*h][j+(count+1+count2)*v] === 0){
+                                        this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+count2+dn1c));
+                                        this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+count2+dn1f1));
+                                    }else {// 两端是死的，看中间够5个不
+                                        if(count+1+count2 == 5){
+                                            this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+count2+1));
+                                        }else{
+                                            this.sumWeight(this.enemyPositions,i+count*h,j+count*v,0);
+                                            //console.log("中间凑不够5个，中间权重是0");
+                                        }
+                                    }
+                                }else { //末2敌或边界
+                                    if(count==4){ // 只有四颗子的时候这个位置才有意义
+                                        this.sumWeight(this.enemyPositions,i+count*h,j+count*v,10**(count+1));
+                                    }
+                                }
+                            }else { // 末1敌或边界   末1不可能是己方的
+                                // 走不了了
+                            }
+                        }
+                        
+                        // 某个方向的前端的推荐权重
+                        if(this.pieces[i+count*h] && this.pieces[i+count*h][j+count*v] === 0){ // 后1空
+                            if(this.pieces[i-1*h] && this.pieces[i-1*h][j-1*v] === 0){ // 前1空
+                                if(this.pieces[i-2*h] && this.pieces[i-2*h][j-2*v] === 0){ //前2空
+                                    this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+n2f1));
+                                    this.sumWeight(this.enemyPositions,i-2*h,j-2*v,10**(count+n2f2));
+                                }else if(this.pieces[i-2*h] && this.pieces[i-2*h][j-2*v] === enemySide){ // 前2己
+                                    // this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+0.3));
+                                    let count2 = this.directionCount(this.reverseDirection(arr[d]),enemySide,i-2*h,j-2*v);
+                                    if(this.pieces[i-(1+count2)*h] && this.pieces[i-(1+count2)*h][j-(1+count2)*v] === 0){
+                                        this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+count2+dn2c));
+                                        this.sumWeight(this.enemyPositions,i-(1+count2)*h,j-(1+count2)*v,10**(count+count2+dn2f1));
+                                    }else {
+                                        this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+count2+dn1c));
+                                    }
+                                }else { //前2敌或边界
+                                    this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+dn1c));
+                                }
+                            }else { // 前1敌或边界   前1不可能是己方的
+                                // 前端没有推荐的位置
+                            }
+                        }else if(this.pieces[i+count*h] && this.pieces[i+count*h][j+count*v] === enemySide){ // 后1己  这里已经计算过了，跳过逻辑
+                            continue;
+                        }else { // 后1 敌方或边界
+                            if(this.pieces[i-1*h] && this.pieces[i-1*h][j-1*v] === 0){ // 前1空
+                                if(this.pieces[i-2*h] && this.pieces[i-2*h][j-2*v] === 0){ //前2空
+                                    this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+n1f1));
+                                    this.sumWeight(this.enemyPositions,i-2*h,j-2*v,10**(count+n1f2));
+                                }else if(this.pieces[i-2*h] && this.pieces[i-2*h][j-2*v] === enemySide){ // 前2己
+                                    // this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+0.1));
+                                    let count2 = this.directionCount(this.reverseDirection(arr[d]),enemySide,i-2*h,j-2*v);
+                                    if(this.pieces[i-(1+count2)*h] && this.pieces[i-(1+count2)*h][j-(1+count2)*v] === 0){
+                                        this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+count2+dn1c));
+                                        this.sumWeight(this.enemyPositions,i-(1+count2)*h,j-(1+count2)*v,10**(count+count2+dn1f1));
+                                    }else { // 前后是死的
+                                        if(count+1+count2 == 5){
+                                            this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+count2+1));
+                                        }else{
+                                            this.sumWeight(this.enemyPositions,i-1*h,j-1*v,0);
+                                            //console.log("中间凑不够5个，中间权重是0");
+                                        }
+                                    }
+                                }else { //前2敌或边界
+                                    if(count==4){ // 只有四颗子的时候这个位置才有意义
+                                        this.sumWeight(this.enemyPositions,i-1*h,j-1*v,10**(count+1));
+                                    }
+                                }
+                            }else { // 前1敌或边界  前1不可能是己方的
+                                // 前后都是敌，推荐个锤子
+                            }
+                        }
+                        
+                    }
+                }
+            }
+        }
+    }
+    
+    reverseDirection(direction){
+        var rd = "";
+        switch(direction){
+            case "r":
+                rd = "l";break;
+            case "rd":
+                rd = "lt";break;
+            case "d":
+                rd = "t";break;
+            case "ld":
+                rd = "rt";break;
+            case "l":
+                rd = "r";break;
+            case "lt":
+                rd = "rd";break;
+            case "t":
+                rd = "d";break;
+            case "rt":
+                rd = "ld";break;
+            default: console.error("输入方向不对，无法反转");     
+        }
+        return rd;
+    }
+    
+    // 方向数字化numberDirection r(1,0) rd(1,1) ld(-1,1)
+    nd(direction){
+        var res = {h:0,v:0}; // h horizontal v vertical
+        switch(direction){
+            case "r":
+                res.h = 1;
+                res.v = 0;
+                break;
+            case "rd":
+                res.h = 1;
+                res.v = 1;
+                break;
+            case "d":
+                res.h = 0;
+                res.v = 1;
+                break;
+            case "ld":
+                res.h = -1;
+                res.v = 1;
+                break;
+            case "l":
+                res.h = -1;
+                res.v = 0;
+                break;
+            case "lt":
+                res.h = -1;
+                res.v = -1;
+                break;
+            case "t":
+                res.h = 0;
+                res.v = -1;
+                break;
+            case "rt":
+                res.h = 1;
+                res.v = -1;
+                break;
+            default: console.error("方向输入有误");
+        }
+        return res;
+    }
+    
+    // 合并同一个位置的权重
+    sumWeight(arr,x,y,weight){
+        var index = -1;
+        for(let i=0,len=arr.length;i<len;i++){
+            if(arr[i].x==x && arr[i].y==y){
+                index = i;
+                break;
+            }
+        }
+        if(index!=-1){ // 如果已存在则权重相加
+            arr[index].weight += weight;
+        }else{ // 如果不存在则添加一条
+            arr.push({x,y,weight});
+        }
+    }
+    
+    // 从推荐位置中找出最佳位置  权重最大的位置
+    bestPosition (){
+        var myMax=0,myP={},myArr=[];
+        for(let i=0,len=this.myPositions.length;i<len;i++){
+            if(this.myPositions[i].weight>myMax){
+                myMax = this.myPositions[i].weight;
+                myP.x = this.myPositions[i].x;
+                myP.y = this.myPositions[i].y;
+            }
+        }
+        var enemyMax = 0, enemyP = {}, enemyArr = [];
+        for(let i=0,len=this.enemyPositions.length;i<len;i++){
+            if(this.enemyPositions[i].weight>enemyMax){
+                enemyMax = this.enemyPositions[i].weight;
+                enemyP.x = this.enemyPositions[i].x;
+                enemyP.y = this.enemyPositions[i].y;
+            }
+        }
+//        console.log(this.myPositions,this.ememyPositions);
+        console.log("敌方权重最大："+enemyMax,"我方权重最大："+myMax);
+        
+        for(let i=0,len=this.myPositions.length;i<len;i++){
+            if(this.myPositions[i].weight===myMax){
+                myArr.push(this.deepClone(this.myPositions[i]));
+            }
+        }
+        for(let i=0,len=this.enemyPositions.length;i<len;i++){
+            if(this.enemyPositions[i].weight===enemyMax){
+                enemyArr.push(this.deepClone(this.enemyPositions[i]));
+            }
+        }
+        if(enemyMax>myMax){
+            // 敌方权重最大的地方（有相同位置时，谋求自己的大权重位置）
+            var myMaxW = 0; // 我方在敌方最有位置处的最佳权重
+            var recommedP = enemyP;
+            for(let i=0, len=enemyArr.length;i<len;i++){
+                for(let j=0,len1=this.myPositions.length;j<len1;j++){
+                    if(this.myPositions[j].x==enemyArr[i].x && this.myPositions[j].y==enemyArr[i].y){
+                        if(this.myPositions[j].weight>myMaxW){
+                            myMaxW = this.myPositions[j].weight;
+                            recommedP.x = this.myPositions[j].x;
+                            recommedP.y = this.myPositions[j].y;
+                        }
+                    }
+                }
+            }
+            return recommedP;
+        }else {
+            // 我方权重最大的地方（有相同位置时，占据敌方的相对大权重位置）
+            var enemyMaxW = 0; // 我方在敌方最有位置处的最佳权重
+            var recommedP = myP;
+            for(let i=0, len=myArr.length;i<len;i++){
+                for(let j=0,len1=this.enemyPositions.length;j<len1;j++){
+                    if(this.enemyPositions[j].x==myArr[i].x && this.enemyPositions[j].y==myArr[i].y){
+                        if(this.enemyPositions[j].weight>enemyMaxW){
+                            enemyMaxW = this.enemyPositions[j].weight;
+                            recommedP.x = this.enemyPositions[j].x;
+                            recommedP.y = this.enemyPositions[j].y;
+                        }
+                    }
+                }
+            }
+            return recommedP;
+        }
+    }
+    
+    // 获取赢家
+    getWinner(){
+        switch(this.victor){
+            case 0:
+                console.log("还没产生赢家");break;
+            case 1: 
+                this.canContinue = false;
+                setTimeout(()=>{alert("白棋赢");},30);
+                break;
+            case -1:
+                this.canContinue = false;
+                setTimeout(()=>{alert("黑棋赢");},30);
+                break;
+            default:;
+        }
+    }
+
+    // 判断输赢
+    getVictor() { //1.找到一个当前棋子，2.判断它的右、右下、下、左下四个方向是否连成5个棋子
+        for(var i=1;i<this.pieces.length;i++){
+            for(var j=1;j<this.pieces[i].length;j++){
+                if(this.pieces[i][j] == this.active){
+                    if(this.directionCount("r",this.active,i,j) == 5){// 右r 下d 左l 上t 
+                        this.victor = this.active;
+                        this.getWinner();
+                        return;
+                    }
+                    if(this.directionCount("rd",this.active,i,j) == 5){
+                        this.victor = this.active;
+                        this.getWinner();
+                        return;
+                    }
+                    if(this.directionCount("d",this.active,i,j) == 5){
+                        this.victor = this.active;
+                        this.getWinner();
+                        return;
+                    }
+                    if(this.directionCount("ld",this.active,i,j) == 5){
+                        this.victor = this.active;
+                        this.getWinner();
+                        return;
+                    }
+                }
+            }
+        }
+        
+
+    }
+    
+    // 此函数替代了原来的 directionCount
+    directionCount(direction,oneSide,i,j){
+        var count = 0;
+        var nd = this.nd(direction);
+        if(this.pieces[i][j] == oneSide){
+            count = 1;
+            for(let k=1;k<5;k++){
+                if(this.pieces[i+k*nd.h] && this.pieces[i+k*nd.h][j+k*nd.v] === oneSide){
+                    count++;
+                    continue;
+                }else {
+                    break;
+                }
+            }
+        }
+        return count;
+    }
+    
+    // 深拷贝
+    deepClone(values) {
+        var copy;
+
+        // Handle the 3 simple types, and null or undefined
+        if(null == values || "object" != typeof values) return values;
+
+        // Handle Date
+        if(values instanceof Date) {
+            copy = new Date();
+            copy.setTime(values.getTime());
+            return copy;
+        }
+
+        // Handle Array
+        if(values instanceof Array) {
+            copy = [];
+            for(var i = 0, len = values.length; i < len; i++) {
+                copy[i] = this.deepClone(values[i]);
+            }
+            return copy;
+        }
+
+        // Handle Object
+        if(values instanceof Object) {
+            copy = {};
+            for(var attr in values) {
+                if(values.hasOwnProperty(attr)) copy[attr] = this.deepClone(values[attr]);
+            }
+            return copy;
+        }
+
+        throw new Error("Unable to copy values! Its type isn't supported.");
+    }
+}
+    </script>
+    <script type="text/javascript">
+        var gobang = new Gobang("gobang");
+        var canvas = document.getElementById("gobang");
+        console.log(canvas.getBoundingClientRect());
+        var offset;
+        canvas.addEventListener("click",function(e){
+            offset = canvas.getBoundingClientRect();
+            var x = Math.round((e.clientX - offset.left) / gobang.cellWidth);
+            var y = Math.round((e.clientY - offset.top) / gobang.cellWidth);
+            console.log(x,y,"点击位置");
+            
+            // 走棋
+            gobang.goStep(x,y);
+        },false);
+        document.getElementById("regret").addEventListener("click",()=>{
+            gobang.regret();
+        },false);
+    </script>
+</html>

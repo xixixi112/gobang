@@ -4,7 +4,7 @@
  * @Author: 韩震
  * @Date: 2023-04-23 22:45:46
  * @LastEditors: 韩震
- * @LastEditTime: 2023-05-18 15:46:49
+ * @LastEditTime: 2023-08-13 15:26:55
 -->
 <template>
   <div>
@@ -17,8 +17,8 @@
 <script>
 import FSHADER from "@/glsl/fshader.glsl";
 import VSHADER from "@/glsl/vshader.glsl";
-import { initBoard } from "./home";
 import { initShaders, vec2, vec4, flatten } from "@/utils/utils";
+import {getMachinePoint, directionCount, reverseDirection} from "@/utils/al"
 export default {
   data() {
     return {
@@ -26,33 +26,40 @@ export default {
       gl: null,
       canvas: null,
       vertexBuffer: null,
-      boardVertexNumber: 84, //棋盘顶点数量，用gl.lines绘制时，横纵各需要21条线，每条线2个顶点，总共84个顶点
+      boardVertexNumber: 0, //棋盘顶点数量，用gl.LINES绘制时，横纵各需要21条线，每条线2个顶点，总共84个顶点
       boardSegment: 20, //棋盘的格数 20*20
       chessNumber: 0, // 棋子个数
-      chessSegment: 36, //绘制圆形棋子需要多个顶点，暂定为1个点
+      chessSegment: 36, //绘制圆形棋子需要画扇形，确定圆心后使用36个个顶点画扇形
       chessVertexCount: 0, //绘制所有棋子的顶点个数 chessNumber * chessSegment
+      chessArr:null, //棋盘数组，0表示该点未下，1表示该点为黑色棋子，-1表示该点为白色棋子
+      curChessColor:1, //当前棋子的颜色，1代表黑色，-1代表白色
+      pointMessageArrs:[],
+      directionArrs: ["r","rd","d","ld"]
     };
   },
-  // created() {},
+  created() {
+    this.chessArr = new Array(this.boardSegment).fill(0).map(item => new Array(this.boardSegment).fill(0))
+    this.boardVertexNumber = this.boardSegment * 4
+    // this.pointMessageArrs = new Array(this.boardSegment).fill(0).map(item => new Array(this.boardSegment).fill(0))
+  },
   mounted() {
     this.getCanvas();
   },
   methods: {
     //获取canvas,绘制棋盘
-
     getCanvas() {
       const canvasSize = Math.min(window.innerHeight, window.innerWidth) * 0.75;
       // 棋盘顶点坐标数组
       const boardVertex = [];
-      const rowNumber = this.boardSegment + 1;
-      const colNumber = this.boardSegment + 1;
+      const rowNumber = this.boardSegment;
+      const colNumber = this.boardSegment;
       // const rowHeight = 2 / boardSegment;
       // const columnWidth = 2 / boardSegment;
       for (let i = 0; i < rowNumber; i++) {
-        boardVertex.push(vec2(-1.0, -1.0 + i * 0.1), vec2(1.0, -1.0 + i * 0.1));
+        boardVertex.push(vec2(-0.95, -0.95 + i * 0.1), vec2(0.95, -0.95 + i * 0.1));
       }
       for (let i = 0; i < colNumber; i++) {
-        boardVertex.push(vec2(-1.0 + i * 0.1, -1.0), vec2(-1.0 + i * 0.1, 1.0));
+        boardVertex.push(vec2(-0.95 + i * 0.1, -0.95), vec2(-0.95 + i * 0.1, 0.95));
       }
       // const vertices = Float32Array.from(boardVertex);
       let canvas = document.getElementById("board");
@@ -89,6 +96,8 @@ export default {
       gl.uniform4f(u_Color, 0.0, 0.0, 0.0, 1.0);
       gl.drawArrays(gl.LINES, 0, this.boardVertexNumber);
     },
+
+    // 绘制一个棋子的点集
     chessVertex(x, y) {
       const chessRadius = 2 / 25 / 2;
       let chessVectexArr = [];
@@ -101,22 +110,58 @@ export default {
       }
       return chessVectexArr;
     },
-    pointing(e) {
+    async pointing(e) {
       let x = e.clientX;
       let y = e.clientY;
       this.chessNumber++;
-      console.log(x, y);
       let rect = e.target.getBoundingClientRect();
       x = (x - rect.left - this.canvas.width / 2) / (this.canvas.width / 2);
       y = (this.canvas.height / 2 - (y - rect.top)) / (this.canvas.height / 2);
-      // 保证点在格子上
-      x = Math.round(x * 10) / 10;
-      y = Math.round(y * 10) / 10;
+      // 保证点在格子中间
+      x = parseFloat((Math.round((x + 0.05) * 10) / 10 - 0.05).toFixed(2));  //toFixed是避免0.1+0.2!==0.3，保留2位小数
+      y = parseFloat((Math.round((y + 0.05) * 10) / 10 - 0.05).toFixed(2));
+      // console.log(x,y)
+      let whereX = Math.round((x - 0.05) * 10 + 10)
+      let whereY = Math.round((y - 0.05) * 10 + 10)
+      // console.log(whereX, whereY)
+      if(whereX < 0 || whereY < 0) {
+        alert("请勿点击棋盘外")
+        return
+      }
+      if(this.chessArr[whereX][whereY] !== 0){
+        alert("该点已经落子，请选择其他位置落子")
+        return
+      }
+      this.chessArr[whereX][whereY] = 1
+      await this.asyncDraw(x,y)
+      // 判断输赢
+      for(let item of this.directionArrs){
+        // console.log(item, directionCount(this.chessArr, item, 1, whereX, whereY) + directionCount(this.chessArr, reverseDirection(item), 1, whereX, whereY))
+        if(directionCount(this.chessArr, item, 1, whereX, whereY) + directionCount(this.chessArr, reverseDirection(item), 1, whereX, whereY) - 1 === 5){
+          alert("黑棋胜利")
+          return 
+        }
+      }
+
+      let machinePoint = getMachinePoint(this.chessArr)
+      this.chessArr[machinePoint.x][machinePoint.y] = -1
+      this.chessNumber++;
+      // debugger
+      // console.log(machinePoint)
+      await this.asyncDraw((machinePoint.x -10)/10+0.05,(machinePoint.y -10)/10+0.05)
+      // 判断输赢
+      for(let item of this.directionArrs){
+        // console.log(item, directionCount(this.chessArr, item, -1, machinePoint.x, machinePoint.y) + directionCount(this.chessArr, reverseDirection(item), 1, machinePoint.x, machinePoint.y))
+        if(directionCount(this.chessArr, item, -1, machinePoint.x, machinePoint.y) + directionCount(this.chessArr, reverseDirection(item), -1, machinePoint.x, machinePoint.y) - 1 === 5){
+          alert("白棋胜利")
+          return 
+        }
+      }
+    },
+    // 每次落子后进行绘制
+    drawChess(x,y){
+      this.curChessColor = -1 * this.curChessColor
       let chessVectexArr = this.chessVertex(x, y);
-      
-      console.log(chessVectexArr);
-      // this.pointArr.push([x,y])
-      // gl.clear(gl.COLOR_BUFFER_BIT)
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vertexBuffer);
       this.gl.bufferSubData(
         this.gl.ARRAY_BUFFER,
@@ -129,10 +174,7 @@ export default {
       this.gl.drawArrays(this.gl.LINES, 0, this.boardVertexNumber);
       this.chessVertexCount += this.chessSegment;
       for (let i = 0; i < this.chessVertexCount; i += this.chessSegment) {
-        let chessColor =
-          (i / this.chessSegment) % 2
-            ? vec4(1.0, 1.0, 1.0, 1.0)
-            : vec4(0.0, 0.0, 0.0, 1.0);
+        let chessColor = (i / this.chessSegment) % 2? vec4(1.0, 1.0, 1.0, 1.0) : vec4(0.0, 0.0, 0.0, 1.0);
         this.gl.uniform4fv(u_Color, chessColor);
         this.gl.drawArrays(
           this.gl.TRIANGLE_FAN,
@@ -141,6 +183,17 @@ export default {
         );
       }
     },
+    asyncDraw(x,y) {
+      return new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            this.drawChess(x,y);
+            setTimeout(() => {
+              resolve();
+            },0);
+          });
+      });
+    }
+
   },
 };
 </script>
