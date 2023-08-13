@@ -4,7 +4,7 @@
  * @Author: 韩震
  * @Date: 2023-04-23 22:45:46
  * @LastEditors: 韩震
- * @LastEditTime: 2023-08-13 15:26:55
+ * @LastEditTime: 2023-08-13 16:49:28
 -->
 <template>
   <div>
@@ -138,6 +138,7 @@ export default {
       for(let item of this.directionArrs){
         // console.log(item, directionCount(this.chessArr, item, 1, whereX, whereY) + directionCount(this.chessArr, reverseDirection(item), 1, whereX, whereY))
         if(directionCount(this.chessArr, item, 1, whereX, whereY) + directionCount(this.chessArr, reverseDirection(item), 1, whereX, whereY) - 1 === 5){
+          this.canvas.style["pointer-events"] = "none"
           alert("黑棋胜利")
           return 
         }
@@ -153,6 +154,7 @@ export default {
       for(let item of this.directionArrs){
         // console.log(item, directionCount(this.chessArr, item, -1, machinePoint.x, machinePoint.y) + directionCount(this.chessArr, reverseDirection(item), 1, machinePoint.x, machinePoint.y))
         if(directionCount(this.chessArr, item, -1, machinePoint.x, machinePoint.y) + directionCount(this.chessArr, reverseDirection(item), -1, machinePoint.x, machinePoint.y) - 1 === 5){
+          this.canvas.style["pointer-events"] = "none"
           alert("白棋胜利")
           return 
         }
