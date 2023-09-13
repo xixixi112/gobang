@@ -4,7 +4,7 @@
  * @Author: 韩震
  * @Date: 2023-04-23 22:45:46
  * @LastEditors: 韩震
- * @LastEditTime: 2023-08-13 16:49:28
+ * @LastEditTime: 2023-09-13 23:34:57
 -->
 <template>
   <div>
@@ -97,7 +97,7 @@ export default {
       gl.drawArrays(gl.LINES, 0, this.boardVertexNumber);
     },
 
-    // 绘制一个棋子的点集
+    // 绘制一个圆形棋子的点集
     chessVertex(x, y) {
       const chessRadius = 2 / 25 / 2;
       let chessVectexArr = [];
@@ -137,7 +137,7 @@ export default {
       // 判断输赢
       for(let item of this.directionArrs){
         // console.log(item, directionCount(this.chessArr, item, 1, whereX, whereY) + directionCount(this.chessArr, reverseDirection(item), 1, whereX, whereY))
-        if(directionCount(this.chessArr, item, 1, whereX, whereY) + directionCount(this.chessArr, reverseDirection(item), 1, whereX, whereY) - 1 === 5){
+        if(directionCount(this.chessArr, item, 1, whereX, whereY) + directionCount(this.chessArr, reverseDirection(item), 1, whereX, whereY) - 1 === 5){ //减1是由于当前点计算了2次
           this.canvas.style["pointer-events"] = "none"
           alert("黑棋胜利")
           return 
@@ -147,8 +147,6 @@ export default {
       let machinePoint = getMachinePoint(this.chessArr)
       this.chessArr[machinePoint.x][machinePoint.y] = -1
       this.chessNumber++;
-      // debugger
-      // console.log(machinePoint)
       await this.asyncDraw((machinePoint.x -10)/10+0.05,(machinePoint.y -10)/10+0.05)
       // 判断输赢
       for(let item of this.directionArrs){
@@ -185,6 +183,7 @@ export default {
         );
       }
     },
+    // 异步是解决棋子还未画到桌面，就已经判定胜负
     asyncDraw(x,y) {
       return new Promise((resolve) => {
           requestAnimationFrame(() => {
